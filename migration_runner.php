@@ -5,12 +5,19 @@
  * @author Istvan Dobrentei
  *
  * usage:
+ * put all files into a directory "utility"
  * put mysql migration files into the SQL_FILES_FOLDER_NAME directory
  * file name conventions:
  * - start with sql + iso date format (YYYYMMDD)
  * - should end with .sql
  *
  * for example: sql20180912_anyname.sql
+ * 
+ * directory structure:
+ *
+ * utility/migration_runner.php
+ * utility/sqlauto/sql00000000_init.sql
+ * utility/sqlauto/*
  *
  * running example:
  * export HOST="127.0.0.1" USER="" PASS="" DB=""; php -f migration_runner.php 2>&1 | grep -v "[Warning]"
@@ -61,7 +68,8 @@ class Migration
     const TAB = "\t";
     const SQL_FILES_FOLDER_NAME = "sqlauto";
     const LAST_RUNNING_FILES_NAME = ".migrated";
-
+    const RUNNING_DIRECTORY = "utility";
+    
     protected $_sqlPath;
     protected $_config;
 
@@ -73,7 +81,7 @@ class Migration
     {
         if(!$this->validConfig($config))
         {
-            die;
+            exit(1);
         }
         $this->_config = $config;
         $this->_sqlPath = __DIR__ . DIRECTORY_SEPARATOR . self::SQL_FILES_FOLDER_NAME;
@@ -211,15 +219,15 @@ class Migration
 
         foreach($files as $file)
         {
-            $output = shell_exec($command . self::SQL_FILES_FOLDER_NAME . DIRECTORY_SEPARATOR . $file);
-            if(empty($output))
+            exec($command . self::SQL_FILES_FOLDER_NAME . DIRECTORY_SEPARATOR . $file, $output, $code);
+            if(empty($code))
             {
                 $fileObj->fputcsv(array($file, $now->format('Y-m-d H:i:s')), self::TAB);
             }
             else
             {
-                echo $output . PHP_EOL;
-                die;
+                echo 'Error' . PHP_EOL;
+                exit(1);
             }
         }
     }
@@ -243,34 +251,66 @@ class Migration
             . ' -e "SET FOREIGN_KEY_CHECKS=0;DROP TABLE $table" ' . $this->_config['DB']
             . ';done';
 
-        $output = shell_exec($command);
+        exec($command, $output, $code);
 
-        if($output)
+        if($code)
         {
-            echo $output . PHP_EOL;
+            echo 'Error' . PHP_EOL;
+            exit(1);
         }
+    }
+    
+    public static function isInRightDirectory()
+    {
+        $dir  = getcwd();
+        $parts = explode(DIRECTORY_SEPARATOR, $dir);
+
+        return $parts[count($parts)-1] == Migration::RUNNING_DIRECTORY;
     }
 }
 
-$options = getopt("", array("host::", "user::", "password::", "database::", "forceload::", "droptables::"));
+$options = getopt("", array("host::", "user::", "password::", "database::", "forceload::", "droptables::", "help::"));
 
-$config['HOST'] = defined('MYSQL_HOST') ? MYSQL_HOST : getenv('HOST');
-$config['HOST'] = empty($config['HOST']) ? $options['host'] : $config['HOST'];
+#######################
+# CHECKING HELP PARAM #
+#######################
+if(isset($options['help'])){
+    echo "Usage: " . PHP_EOL . "migration_runner.php --host=<yourhost> --user=<dbuser> --password=<dbpassword> --database=<dbname> --forceload=<1 or 0> --droptables=<1 or 0>" . PHP_EOL.PHP_EOL;
+    exit(1);
+}
+###############################
+# CHECKING RUNNING DIRECTORY  #
+###############################
+if(!Migration::isInRightDirectory()){
+    echo "Please run the script from the " . Migration::RUNNING_DIRECTORY . " directory!" . PHP_EOL;
+    exit(1);
+}
+####################
+# SET INPUT PARAMS #
+####################
 
-$config['DB'] = defined('MYSQL_DATABASE') ? defined('MYSQL_DATABASE') : getenv('DB');
-$config['DB'] = empty($config['DB']) ? $options['database'] : $config['DB'];
+$config['HOST'] = isset($options['host']) ? $options['host'] : '';
+$config['HOST'] = empty($config['HOST']) && defined('MYSQL_HOST') ? MYSQL_HOST : $config['HOST'];
+$config['HOST'] = empty($config['HOST']) && getenv('HOST') ? getenv('HOST') : $config['HOST'];
 
-$config['USER'] = defined('MYSQL_USER') ? MYSQL_USER : getenv('USER');
-$config['USER'] = empty($config['USER']) ? $options['user'] : $config['USER'];
+$config['DB'] = isset($options['database']) ? $options['database'] : '';
+$config['DB'] = empty($config['DB']) && defined('MYSQL_DATABASE') ? MYSQL_DATABASE : $config['DB'];
+$config['DB'] = empty($config['DB']) && getenv('DB') ? getenv('DB') : $config['DB'];
 
-$config['PASS'] = defined('MYSQL_PASSWORD') ? MYSQL_PASSWORD : getenv('PASS');
-$password = isset($options['password']) ? $options['password'] : '';
-$config['PASS'] = empty($config['PASS']) ? $password : $config['PASS'];
+$config['USER'] = isset($options['user']) ? $options['user'] : '';
+$config['USER'] = empty($config['USER']) && defined('MYSQL_USER') ? MYSQL_USER : $config['USER'];
+$config['USER'] = empty($config['USER']) && getenv('USER') ? getenv('USER') : $config['USER'];
 
-$config['FORCELOAD'] = defined('FORCELOAD') ? defined('FORCELOAD') : getenv('FORCELOAD');
-$config['FORCELOAD'] = empty($config['FORCELOAD']) ? $options['forceload'] : $config['FORCELOAD'];
+$config['PASS'] = isset($options['password']) ? $options['password'] : '';
+$config['PASS'] = empty($config['PASS']) && defined('MYSQL_PASSWORD') ? MYSQL_PASSWORD : $config['PASS'];
+$config['PASS'] = empty($config['PASS']) && getenv('PASS') ? getenv('PASS') : $config['PASS'];
 
-$config['DROP_TABLES'] = defined('DROP_TABLES') ? defined('DROP_TABLES') : getenv('DROP_TABLES');
-$config['DROP_TABLES'] = empty($config['DROP_TABLES']) ? $options['droptables'] : $config['DROP_TABLES'];
+$config['FORCELOAD'] = isset($options['forceload']) ? $options['forceload'] : '';
+$config['FORCELOAD'] = empty($config['FORCELOAD']) && defined('FORCELOAD') ? FORCELOAD : $config['FORCELOAD'];
+$config['FORCELOAD'] = empty($config['FORCELOAD']) && getenv('FORCELOAD') ? getenv('FORCELOAD') : $config['FORCELOAD'];
+
+$config['DROP_TABLES'] = isset($options['droptables']) ? $options['droptables'] : '';
+$config['DROP_TABLES'] = empty($config['DROP_TABLES']) && defined('DROP_TABLES') ? DROP_TABLES : $config['DROP_TABLES'];
+$config['DROP_TABLES'] = empty($config['DROP_TABLES']) && getenv('DROP_TABLES') ? getenv('DROP_TABLES') : $config['DROP_TABLES'];
 
 $migration = new Migration($config);
