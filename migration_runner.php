@@ -90,6 +90,7 @@ class Migration
             $this->deleteAllTables();
         }
         $files = $this->getNotMigratedFiles();
+        $this->createDatabase();
         $this->importIntoDatabase($files);
     }
 
@@ -199,6 +200,28 @@ class Migration
         return $result;
     }
 
+    /*
+     * Create database if not exists
+     *
+     * */
+    protected function createDatabase()
+    {
+        $command = 'mysql'
+            . ' --host=' . $this->_config['HOST']
+            . ' --user=' . $this->_config['USER']
+            . ' --password=' . $this->_config['PASS']
+            . ' -e "CREATE DATABASE IF NOT EXISTS ' . $this->_config['DB'] . '"';
+
+        exec($command, $output, $code);
+
+        if($code)
+        {
+            echo $command.PHP_EOL;
+            echo 'Error Create DB' . PHP_EOL;
+            exit(1);
+        }
+    }
+    
     /**
      * Import sql files into database and create a log
      *
